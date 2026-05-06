@@ -106,8 +106,10 @@ func (r *ProposalReconciler) createAnalysisResult(
 			Labels:          resultLabels(proposal.Name, "analysis", attempt),
 			OwnerReferences: []metav1.OwnerReference{proposalOwnerRef(proposal)},
 		},
-		ProposalName: proposal.Name,
-		Attempt:      attempt,
+		Spec: agenticv1alpha1.AnalysisResultSpec{
+			ProposalName: proposal.Name,
+			Attempt:      attempt,
+		},
 		Status: agenticv1alpha1.AnalysisResultStatus{
 			Conditions:    resultConditions(startTime, completedAt, outcome),
 			Sandbox:       sandbox,
@@ -152,9 +154,11 @@ func (r *ProposalReconciler) createExecutionResult(
 			Labels:          resultLabels(proposal.Name, "execution", attempt),
 			OwnerReferences: []metav1.OwnerReference{proposalOwnerRef(proposal)},
 		},
-		ProposalName: proposal.Name,
-		Attempt:      attempt,
-		RetryIndex:   ptr.To(executionRetryIndex(proposal)),
+		Spec: agenticv1alpha1.ExecutionResultSpec{
+			ProposalName: proposal.Name,
+			Attempt:      attempt,
+			RetryIndex:   ptr.To(executionRetryIndex(proposal)),
+		},
 		Status: agenticv1alpha1.ExecutionResultStatus{
 			Conditions:    resultConditions(startTime, completedAt, outcome),
 			Sandbox:       sandbox,
@@ -199,9 +203,11 @@ func (r *ProposalReconciler) createVerificationResult(
 			Labels:          resultLabels(proposal.Name, "verification", attempt),
 			OwnerReferences: []metav1.OwnerReference{proposalOwnerRef(proposal)},
 		},
-		ProposalName: proposal.Name,
-		Attempt:      attempt,
-		RetryIndex:   ptr.To(executionRetryIndex(proposal)),
+		Spec: agenticv1alpha1.VerificationResultSpec{
+			ProposalName: proposal.Name,
+			Attempt:      attempt,
+			RetryIndex:   ptr.To(executionRetryIndex(proposal)),
+		},
 		Status: agenticv1alpha1.VerificationResultStatus{
 			Conditions:    resultConditions(startTime, completedAt, outcome),
 			Sandbox:       sandbox,
@@ -246,8 +252,10 @@ func (r *ProposalReconciler) createEscalationResult(
 			Labels:          resultLabels(proposal.Name, "escalation", attempt),
 			OwnerReferences: []metav1.OwnerReference{proposalOwnerRef(proposal)},
 		},
-		ProposalName: proposal.Name,
-		Attempt:      attempt,
+		Spec: agenticv1alpha1.EscalationResultSpec{
+			ProposalName: proposal.Name,
+			Attempt:      attempt,
+		},
 		Status: agenticv1alpha1.EscalationResultStatus{
 			Conditions:    resultConditions(startTime, completedAt, outcome),
 			Sandbox:       sandbox,

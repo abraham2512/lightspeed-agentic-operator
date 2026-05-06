@@ -21,8 +21,10 @@ func TestCreateIdempotent_StatusFieldsWritten(t *testing.T) {
 			Name:      "test-analysis-1",
 			Namespace: "default",
 		},
-		ProposalName: "test-proposal",
-		Attempt:      1,
+		Spec: agenticv1alpha1.AnalysisResultSpec{
+			ProposalName: "test-proposal",
+			Attempt:      1,
+		},
 		Status: agenticv1alpha1.AnalysisResultStatus{
 			Conditions: []metav1.Condition{
 				{Type: "Completed", Status: metav1.ConditionTrue, Reason: "Succeeded", LastTransitionTime: metav1.Now()},
@@ -47,11 +49,11 @@ func TestCreateIdempotent_StatusFieldsWritten(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 
-	if got.ProposalName != "test-proposal" {
-		t.Errorf("proposalName = %q, want test-proposal", got.ProposalName)
+	if got.Spec.ProposalName != "test-proposal" {
+		t.Errorf("proposalName = %q, want test-proposal", got.Spec.ProposalName)
 	}
-	if got.Attempt != 1 {
-		t.Errorf("attempt = %d, want 1", got.Attempt)
+	if got.Spec.Attempt != 1 {
+		t.Errorf("attempt = %d, want 1", got.Spec.Attempt)
 	}
 	if len(got.Status.Options) != 1 {
 		t.Fatalf("expected 1 option in status, got %d", len(got.Status.Options))
@@ -78,8 +80,10 @@ func TestCreateIdempotent_AlreadyExists(t *testing.T) {
 			Name:      "test-analysis-1",
 			Namespace: "default",
 		},
-		ProposalName: "test-proposal",
-		Attempt:      1,
+		Spec: agenticv1alpha1.AnalysisResultSpec{
+			ProposalName: "test-proposal",
+			Attempt:      1,
+		},
 	}
 
 	fc := fake.NewClientBuilder().WithScheme(scheme).
@@ -91,8 +95,10 @@ func TestCreateIdempotent_AlreadyExists(t *testing.T) {
 			Name:      "test-analysis-1",
 			Namespace: "default",
 		},
-		ProposalName: "test-proposal",
-		Attempt:      1,
+		Spec: agenticv1alpha1.AnalysisResultSpec{
+			ProposalName: "test-proposal",
+			Attempt:      1,
+		},
 		Status: agenticv1alpha1.AnalysisResultStatus{
 			Options: []agenticv1alpha1.RemediationOption{
 				{Title: "Should not overwrite"},
@@ -125,9 +131,11 @@ func TestCreateIdempotent_ExecutionResult(t *testing.T) {
 			Name:      "test-execution-1",
 			Namespace: "default",
 		},
-		ProposalName: "test-proposal",
-		Attempt:      1,
-		RetryIndex:   &retryIdx,
+		Spec: agenticv1alpha1.ExecutionResultSpec{
+			ProposalName: "test-proposal",
+			Attempt:      1,
+			RetryIndex:   &retryIdx,
+		},
 		Status: agenticv1alpha1.ExecutionResultStatus{
 			Conditions: []metav1.Condition{
 				{Type: "Completed", Status: metav1.ConditionTrue, Reason: "Succeeded", LastTransitionTime: metav1.Now()},

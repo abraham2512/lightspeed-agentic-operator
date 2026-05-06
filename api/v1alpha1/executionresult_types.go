@@ -57,25 +57,8 @@ type ExecutionResultStatus struct {
 	FailureReason string `json:"failureReason,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Namespaced
-// +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Proposal",type=string,JSONPath=`.proposalName`
-// +kubebuilder:printcolumn:name="Attempt",type=integer,JSONPath=`.attempt`
-// +kubebuilder:printcolumn:name="Retry",type=integer,JSONPath=`.retryIndex`
-// +kubebuilder:printcolumn:name="Outcome",type=string,JSONPath=`.status.conditions[?(@.type=="Completed")].reason`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// ExecutionResult records the output of a single execution step execution.
-// Created by the operator after the execution agent completes. Owned by
-// the parent Proposal for garbage collection.
-type ExecutionResult struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// metadata is the standard object metadata.
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
+// ExecutionResultSpec contains the immutable identity fields for an ExecutionResult.
+type ExecutionResultSpec struct {
 	// proposalName is the name of the parent Proposal in the same namespace.
 	// +required
 	// +kubebuilder:validation:MinLength=1
@@ -93,6 +76,31 @@ type ExecutionResult struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=10
 	RetryIndex *int32 `json:"retryIndex,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Proposal",type=string,JSONPath=`.spec.proposalName`
+// +kubebuilder:printcolumn:name="Attempt",type=integer,JSONPath=`.spec.attempt`
+// +kubebuilder:printcolumn:name="Retry",type=integer,JSONPath=`.spec.retryIndex`
+// +kubebuilder:printcolumn:name="Outcome",type=string,JSONPath=`.status.conditions[?(@.type=="Completed")].reason`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// ExecutionResult records the output of a single execution step execution.
+// Created by the operator after the execution agent completes. Owned by
+// the parent Proposal for garbage collection.
+type ExecutionResult struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard object metadata.
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// spec contains the immutable identity fields for this result.
+	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable"
+	Spec ExecutionResultSpec `json:"spec,omitzero"`
 
 	// status contains result data and conditions.
 	// +optional
