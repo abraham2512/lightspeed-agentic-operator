@@ -238,11 +238,17 @@ func prettyJSON(v interface{}) string {
 }
 
 type analysisQuery struct {
-	Request string
+	Request         string
+	HasExecution    bool
+	HasVerification bool
 }
 
-func buildAnalysisQuery(requestText string) string {
-	return renderTemplate("analysis_query.tmpl", analysisQuery{Request: requestText})
+func buildAnalysisQuery(requestText string, proposal *agenticv1alpha1.Proposal) string {
+	return renderTemplate("analysis_query.tmpl", analysisQuery{
+		Request:         requestText,
+		HasExecution:    !proposal.Spec.Execution.IsZero(),
+		HasVerification: !proposal.Spec.Verification.IsZero(),
+	})
 }
 
 type executionQuery struct {

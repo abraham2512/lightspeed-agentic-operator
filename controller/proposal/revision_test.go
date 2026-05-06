@@ -77,3 +77,51 @@ func TestBuildRevisionContext_WithoutFeedback(t *testing.T) {
 		t.Errorf("expected generation number in context, got: %s", result)
 	}
 }
+
+func TestBuildAnalysisQuery_FullProposal(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{
+		Spec: agenticv1alpha1.ProposalSpec{
+			Execution:    agenticv1alpha1.ProposalStep{Agent: "default"},
+			Verification: agenticv1alpha1.ProposalStep{Agent: "default"},
+		},
+	}
+	result := buildAnalysisQuery("Fix the crash", proposal)
+	if !strings.Contains(result, "RBAC permissions") {
+		t.Error("full proposal should mention RBAC permissions")
+	}
+	if !strings.Contains(result, "verification plan") {
+		t.Error("full proposal should mention verification plan")
+	}
+	if !strings.Contains(result, "Fix the crash") {
+		t.Error("should contain the request text")
+	}
+}
+
+func TestBuildAnalysisQuery_TrustMode(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{
+		Spec: agenticv1alpha1.ProposalSpec{
+			Execution: agenticv1alpha1.ProposalStep{Agent: "default"},
+		},
+	}
+	result := buildAnalysisQuery("Fix the crash", proposal)
+	if !strings.Contains(result, "RBAC permissions") {
+		t.Error("execution proposal should mention RBAC permissions")
+	}
+	if strings.Contains(result, "verification plan") {
+		t.Error("trust-mode proposal should NOT mention verification plan")
+	}
+}
+
+func TestBuildAnalysisQuery_Advisory(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	result := buildAnalysisQuery("What is 2+2?", proposal)
+	if strings.Contains(result, "RBAC permissions") {
+		t.Error("advisory proposal should NOT mention RBAC permissions")
+	}
+	if strings.Contains(result, "verification plan") {
+		t.Error("advisory proposal should NOT mention verification plan")
+	}
+	if !strings.Contains(result, "What is 2+2?") {
+		t.Error("should contain the request text")
+	}
+}

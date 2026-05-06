@@ -66,7 +66,7 @@ func stepString(step agenticv1alpha1.SandboxStep) string {
 }
 
 func (s *SandboxAgentCaller) Analyze(ctx context.Context, proposal *agenticv1alpha1.Proposal, step resolvedStep, requestText string) (*AnalysisOutput, error) {
-	query := buildAnalysisQuery(requestText)
+	query := buildAnalysisQuery(requestText, proposal)
 	raw, err := s.callWithSandbox(ctx, proposal, stepString(agenticv1alpha1.SandboxStepAnalysis), step, query, buildAgentContext(proposal))
 	if err != nil {
 		return nil, fmt.Errorf("analysis agent call: %w", err)
