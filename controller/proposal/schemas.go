@@ -7,8 +7,9 @@ import (
 )
 
 // Default JSON Schemas sent to the agent for LLM structured output enforcement.
-// Each phase has a known response shape. For analysis, spec.outputSchema is
-// injected as a required "components" property in each option.
+// Each phase has a known response shape. For analysis, spec.analysisOutput
+// controls the base schema (Default or Minimal mode) and optionally injects
+// a custom schema as a required "components" property in each option.
 
 var AnalysisOutputSchema = json.RawMessage(`{
   "type": "object",
@@ -125,6 +126,30 @@ var AnalysisOutputSchema = json.RawMessage(`{
   "required": ["options"]
 }`)
 
+// MinimalAnalysisOutputSchema is the base analysis output schema used
+// when AnalysisOutputMode is Minimal. It contains only the options array
+// with title per option. Built-in properties (diagnosis, proposal, rbac,
+// verification, summary) are omitted. If execution or verification steps
+// exist, those specific property definitions are added back dynamically.
+var MinimalAnalysisOutputSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "options": {
+      "type": "array",
+      "description": "One or more output options, ordered by recommendation. Provide at least one.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "description": "Short human-readable title for this option" }
+        },
+        "required": ["title"]
+      }
+    }
+  },
+  "required": ["options"]
+}`)
+
 var ExecutionOutputSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -196,29 +221,80 @@ var defaultOutputSchemas = map[string]json.RawMessage{
 	"escalation":   EscalationOutputSchema,
 }
 
+// builtInPropertyJSON holds pre-serialized property definitions from
+// AnalysisOutputSchema. Stored as raw JSON to avoid shared map aliasing
+// when injected into Minimal mode schemas.
+var builtInPropertyJSON map[string]json.RawMessage
+
+func init() {
+	var schema map[string]any
+	_ = json.Unmarshal(AnalysisOutputSchema, &schema)
+	options := schema["properties"].(map[string]any)["options"].(map[string]any)
+	items := options["items"].(map[string]any)
+	allProps := items["properties"].(map[string]any)
+
+	builtInPropertyJSON = make(map[string]json.RawMessage, len(allProps))
+	for k, v := range allProps {
+		b, _ := json.Marshal(v)
+		builtInPropertyJSON[k] = b
+	}
+}
+
+func injectBuiltInProperty(props map[string]any, name string) {
+	var v any
+	_ = json.Unmarshal(builtInPropertyJSON[name], &v)
+	props[name] = v
+}
+
 func outputSchemaForStep(stepName string, proposal *agenticv1alpha1.Proposal) json.RawMessage {
 	if stepName != "analysis" {
 		return defaultOutputSchemas[stepName]
 	}
 
-	required := []any{"title", "diagnosis", "proposal"}
-	if !proposal.Spec.Execution.IsZero() {
-		required = append(required, "rbac")
+	mode := proposal.Spec.AnalysisOutput.Mode
+	if mode == "" {
+		mode = agenticv1alpha1.AnalysisOutputModeDefault
 	}
-	if !proposal.Spec.Verification.IsZero() {
-		required = append(required, "verification")
+	customSchema := proposal.Spec.AnalysisOutput.Schema
+
+	var baseSchema json.RawMessage
+	if mode == agenticv1alpha1.AnalysisOutputModeMinimal {
+		baseSchema = MinimalAnalysisOutputSchema
+	} else {
+		baseSchema = AnalysisOutputSchema
 	}
 
 	var schema map[string]any
-	_ = json.Unmarshal(AnalysisOutputSchema, &schema)
+	_ = json.Unmarshal(baseSchema, &schema)
 	options := schema["properties"].(map[string]any)["options"].(map[string]any)
 	items := options["items"].(map[string]any)
+	props := items["properties"].(map[string]any)
 
-	if proposal.Spec.OutputSchema != nil {
+	required := []any{"title"}
+	if mode == agenticv1alpha1.AnalysisOutputModeDefault {
+		required = append(required, "diagnosis", "proposal")
+	}
+
+	if !proposal.Spec.Execution.IsZero() {
+		if mode == agenticv1alpha1.AnalysisOutputModeMinimal {
+			injectBuiltInProperty(props, "proposal")
+			injectBuiltInProperty(props, "rbac")
+			required = append(required, "proposal")
+		}
+		required = append(required, "rbac")
+	}
+
+	if !proposal.Spec.Verification.IsZero() {
+		if mode == agenticv1alpha1.AnalysisOutputModeMinimal {
+			injectBuiltInProperty(props, "verification")
+		}
+		required = append(required, "verification")
+	}
+
+	if customSchema != nil {
 		var components any
-		if b, err := json.Marshal(proposal.Spec.OutputSchema); err == nil {
+		if b, err := json.Marshal(customSchema); err == nil {
 			_ = json.Unmarshal(b, &components)
-			props := items["properties"].(map[string]any)
 			props["components"] = components
 			required = append(required, "components")
 		}

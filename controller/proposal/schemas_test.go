@@ -239,14 +239,19 @@ func TestOutputSchemaForStep_NonAnalysis_ReturnsDefault(t *testing.T) {
 	}
 }
 
-func extractOptionRequired(t *testing.T, schema json.RawMessage) map[string]bool {
+func extractOptionItems(t *testing.T, schema json.RawMessage) map[string]any {
 	t.Helper()
 	var parsed map[string]any
 	if err := json.Unmarshal(schema, &parsed); err != nil {
 		t.Fatalf("invalid schema JSON: %v", err)
 	}
 	options := parsed["properties"].(map[string]any)["options"].(map[string]any)
-	items := options["items"].(map[string]any)
+	return options["items"].(map[string]any)
+}
+
+func extractOptionRequired(t *testing.T, schema json.RawMessage) map[string]bool {
+	t.Helper()
+	items := extractOptionItems(t, schema)
 	required := items["required"].([]any)
 	set := map[string]bool{}
 	for _, r := range required {
@@ -285,10 +290,12 @@ func TestExecutionOutputSchema_ActionsUseOutcomeNotSuccess(t *testing.T) {
 
 func TestOutputSchemaForStep_WithOutputSchema_InjectsComponents(t *testing.T) {
 	proposal := &agenticv1alpha1.Proposal{}
-	proposal.Spec.OutputSchema = &apiextensionsv1.JSONSchemaProps{
-		Type: "object",
-		Properties: map[string]apiextensionsv1.JSONSchemaProps{
-			"foo": {Type: "string"},
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Schema: &apiextensionsv1.JSONSchemaProps{
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"foo": {Type: "string"},
+			},
 		},
 	}
 
@@ -338,6 +345,161 @@ func TestOutputSchemaForStep_WithoutOutputSchema_NoComponents(t *testing.T) {
 
 	required := extractOptionRequired(t, schema)
 	if required["components"] {
-		t.Error("'components' should not be required when outputSchema is nil")
+		t.Error("'components' should not be required when analysisOutput.schema is nil")
+	}
+}
+
+func extractOptionProperties(t *testing.T, schema json.RawMessage) map[string]any {
+	t.Helper()
+	return extractOptionItems(t, schema)["properties"].(map[string]any)
+}
+
+func TestMinimalAnalysisOutputSchema_ValidJSON(t *testing.T) {
+	var parsed map[string]any
+	if err := json.Unmarshal(MinimalAnalysisOutputSchema, &parsed); err != nil {
+		t.Fatalf("MinimalAnalysisOutputSchema is not valid JSON: %v", err)
+	}
+	if parsed["type"] != "object" {
+		t.Errorf("type = %v, want object", parsed["type"])
+	}
+
+	props := parsed["properties"].(map[string]any)
+	options := props["options"].(map[string]any)
+	items := options["items"].(map[string]any)
+	itemProps := items["properties"].(map[string]any)
+
+	if _, ok := itemProps["title"]; !ok {
+		t.Error("MinimalAnalysisOutputSchema should have 'title' in option items")
+	}
+	if len(itemProps) != 1 {
+		t.Errorf("MinimalAnalysisOutputSchema should have exactly 1 property (title), got %d", len(itemProps))
+	}
+}
+
+func TestOutputSchemaForStep_MinimalMode_StripsBuiltInProperties(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Mode: agenticv1alpha1.AnalysisOutputModeMinimal,
+	}
+
+	schema := outputSchemaForStep("analysis", proposal)
+	props := extractOptionProperties(t, schema)
+
+	if _, ok := props["title"]; !ok {
+		t.Error("Minimal mode should have 'title' property")
+	}
+	for _, key := range []string{"diagnosis", "proposal", "rbac", "verification", "summary"} {
+		if _, ok := props[key]; ok {
+			t.Errorf("Minimal mode should not have '%s' property", key)
+		}
+	}
+
+	required := extractOptionRequired(t, schema)
+	if !required["title"] {
+		t.Error("Minimal mode should require 'title'")
+	}
+	if required["diagnosis"] || required["proposal"] {
+		t.Error("Minimal mode should not require diagnosis or proposal")
+	}
+}
+
+func TestOutputSchemaForStep_MinimalMode_WithCustomSchema(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Mode: agenticv1alpha1.AnalysisOutputModeMinimal,
+		Schema: &apiextensionsv1.JSONSchemaProps{
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"severity": {Type: "string"},
+			},
+		},
+	}
+
+	schema := outputSchemaForStep("analysis", proposal)
+	props := extractOptionProperties(t, schema)
+
+	if _, ok := props["components"]; !ok {
+		t.Fatal("Minimal + custom schema should have 'components' property")
+	}
+	if _, ok := props["diagnosis"]; ok {
+		t.Error("Minimal + custom schema should not have 'diagnosis'")
+	}
+
+	required := extractOptionRequired(t, schema)
+	if !required["components"] {
+		t.Error("'components' should be required")
+	}
+	if !required["title"] {
+		t.Error("'title' should be required")
+	}
+}
+
+func TestOutputSchemaForStep_MinimalMode_WithExecution_InjectsRBACAndProposal(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Mode: agenticv1alpha1.AnalysisOutputModeMinimal,
+	}
+	proposal.Spec.Execution = agenticv1alpha1.ProposalStep{Agent: "default"}
+
+	schema := outputSchemaForStep("analysis", proposal)
+	props := extractOptionProperties(t, schema)
+
+	if _, ok := props["rbac"]; !ok {
+		t.Error("Minimal + execution should inject 'rbac' property")
+	}
+	if _, ok := props["proposal"]; !ok {
+		t.Error("Minimal + execution should inject 'proposal' property")
+	}
+	if _, ok := props["diagnosis"]; ok {
+		t.Error("Minimal + execution should not inject 'diagnosis'")
+	}
+
+	required := extractOptionRequired(t, schema)
+	if !required["rbac"] {
+		t.Error("rbac should be required when execution exists")
+	}
+	if !required["proposal"] {
+		t.Error("proposal should be required when execution exists")
+	}
+}
+
+func TestOutputSchemaForStep_MinimalMode_WithVerification_InjectsVerification(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Mode: agenticv1alpha1.AnalysisOutputModeMinimal,
+	}
+	proposal.Spec.Verification = agenticv1alpha1.ProposalStep{Agent: "default"}
+
+	schema := outputSchemaForStep("analysis", proposal)
+	props := extractOptionProperties(t, schema)
+
+	if _, ok := props["verification"]; !ok {
+		t.Error("Minimal + verification should inject 'verification' property")
+	}
+
+	required := extractOptionRequired(t, schema)
+	if !required["verification"] {
+		t.Error("verification should be required when verification step exists")
+	}
+}
+
+func TestOutputSchemaForStep_DefaultMode_Unchanged(t *testing.T) {
+	proposal := &agenticv1alpha1.Proposal{}
+	proposal.Spec.AnalysisOutput = agenticv1alpha1.AnalysisOutput{
+		Mode: agenticv1alpha1.AnalysisOutputModeDefault,
+	}
+
+	schema := outputSchemaForStep("analysis", proposal)
+	props := extractOptionProperties(t, schema)
+
+	for _, key := range []string{"title", "diagnosis", "proposal", "rbac", "verification"} {
+		if _, ok := props[key]; !ok {
+			t.Errorf("Default mode should have '%s' property", key)
+		}
+	}
+
+	required := extractOptionRequired(t, schema)
+	if !required["title"] || !required["diagnosis"] || !required["proposal"] {
+		t.Error("Default mode should require title, diagnosis, proposal")
 	}
 }

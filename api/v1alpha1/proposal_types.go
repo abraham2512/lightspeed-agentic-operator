@@ -147,6 +147,61 @@ const (
 	SandboxStepEscalation SandboxStep = "Escalation"
 )
 
+// AnalysisOutputMode controls which built-in properties the analysis output
+// schema includes. Use Default to get the full schema (diagnosis, proposal,
+// RBAC, verification). Use Minimal to get only the base structure (options
+// array with title) — suitable for analysis-only proposals that define
+// their own output shape via the schema field.
+//
+// Allowed values:
+//   - "Default" — Full analysis output schema with all built-in properties.
+//   - "Minimal" — Base structure only (options array with title per option).
+//
+// +kubebuilder:validation:Enum=Default;Minimal
+type AnalysisOutputMode string
+
+const (
+	// AnalysisOutputModeDefault uses the full analysis output schema with
+	// all built-in properties (diagnosis, proposal, summary, rbac, verification).
+	AnalysisOutputModeDefault AnalysisOutputMode = "Default"
+	// AnalysisOutputModeMinimal uses a minimal analysis output schema with
+	// only the base structure (options array with title per option).
+	// Built-in properties are omitted unless required by the workflow
+	// (e.g., rbac is added when an execution step exists).
+	AnalysisOutputModeMinimal AnalysisOutputMode = "Minimal"
+)
+
+// AnalysisOutput configures the analysis step's structured output schema.
+// The mode field controls which built-in properties are included. The
+// schema field optionally defines adapter-specific structured data that
+// is injected as a required "components" property in each option.
+//
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:XValidation:rule="self.mode != 'Minimal' || has(self.schema)",message="schema is required when mode is Minimal"
+type AnalysisOutput struct {
+	// mode controls which built-in properties the analysis output schema
+	// includes. Default includes all built-in properties (diagnosis,
+	// proposal, summary, rbac, verification). Minimal includes only the
+	// base structure (options array with title per option). Omit or set
+	// to "Default" for standard remediation workflows.
+	// +optional
+	// +default="Default"
+	Mode AnalysisOutputMode `json:"mode,omitempty"`
+
+	// schema is a JSON Schema injected as a required "components"
+	// property in each analysis output option. Use this to require
+	// adapter-specific structured data beyond the base analysis schema.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Schema *apiextensionsv1.JSONSchemaProps `json:"schema,omitempty"`
+}
+
+func (a AnalysisOutput) IsZero() bool {
+	return a.Mode == "" && a.Schema == nil
+}
+
 // Condition types for Proposal. Conditions are the primary mechanism for
 // observing proposal state. The operator sets these as the proposal
 // progresses through its lifecycle. Each condition has a type, status
@@ -217,7 +272,8 @@ func (s ProposalStep) IsZero() bool {
 //
 // +kubebuilder:validation:XValidation:rule="has(self.analysis)",message="analysis must be provided"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.targetNamespaces) || (has(self.targetNamespaces) && self.targetNamespaces == oldSelf.targetNamespaces)",message="targetNamespaces is immutable once set"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.outputSchema) || (has(self.outputSchema) && self.outputSchema == oldSelf.outputSchema)",message="outputSchema is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.analysisOutput) || (has(self.analysisOutput) && self.analysisOutput == oldSelf.analysisOutput)",message="analysisOutput is immutable once set"
+// +kubebuilder:validation:XValidation:rule="!has(self.analysisOutput) || self.analysisOutput.mode != 'Minimal' || (!has(self.execution) && !has(self.verification))",message="analysisOutput mode Minimal is only allowed for analysis-only proposals (no execution or verification steps)"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.tools) || (has(self.tools) && self.tools == oldSelf.tools)",message="tools is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.analysis) || (has(self.analysis) && self.analysis == oldSelf.analysis)",message="analysis is immutable once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.execution) || (has(self.execution) && self.execution == oldSelf.execution)",message="execution is immutable once set"
@@ -256,17 +312,17 @@ type ProposalSpec struct {
 	// +kubebuilder:validation:items:MaxLength=63
 	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
 
-	// outputSchema is a JSON Schema injected as a required "components"
-	// property in the analysis output. Use this to require adapter-specific
-	// structured data beyond the base analysis schema (diagnosis, proposal,
-	// RBAC, verification plan).
+	// analysisOutput configures the analysis step's structured output.
+	// The mode field controls which built-in properties are included
+	// (Default: all; Minimal: only title). The schema field optionally
+	// defines adapter-specific structured data injected as "components".
+	//
+	// When omitted, the analysis uses the full default schema with all
+	// built-in properties and no custom components.
 	//
 	// Immutable: the output contract is fixed at creation.
 	// +optional
-	// +kubebuilder:validation:Schemaless
-	// +kubebuilder:validation:Type=object
-	// +kubebuilder:pruning:PreserveUnknownFields
-	OutputSchema *apiextensionsv1.JSONSchemaProps `json:"outputSchema,omitempty"`
+	AnalysisOutput AnalysisOutput `json:"analysisOutput,omitzero"`
 
 	// tools defines the default tools for all steps: skills images,
 	// MCP servers, and required secrets. Per-step tools

@@ -320,6 +320,9 @@ type RBACResult struct {
 // data. For example, an ACS adapter might include violation details or
 // affected deployment information as components that the console plugin
 // renders with custom components.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.diagnosis) || has(self.proposal)",message="proposal is required when diagnosis is present"
+// +kubebuilder:validation:XValidation:rule="!has(self.proposal) || has(self.diagnosis)",message="diagnosis is required when proposal is present"
 type RemediationOption struct {
 	// title is a short Markdown-formatted name for this option
 	// (e.g., "Increase memory limit", "Restart with backoff").
@@ -335,10 +338,14 @@ type RemediationOption struct {
 	// +kubebuilder:validation:MaxLength=1024
 	Summary string `json:"summary,omitempty"`
 	// diagnosis contains the root cause analysis specific to this option.
-	// +required
+	// Present when analysisOutput mode is Default (or omitted). Omitted
+	// when mode is Minimal.
+	// +optional
 	Diagnosis DiagnosisResult `json:"diagnosis,omitzero"`
 	// proposal contains the remediation plan for this option.
-	// +required
+	// Present when analysisOutput mode is Default (or omitted). Omitted
+	// when mode is Minimal without an execution step.
+	// +optional
 	Proposal ProposalResult `json:"proposal,omitzero"`
 	// verification contains the verification plan. Omitted when
 	// verification is skipped in the workflow.
@@ -350,9 +357,9 @@ type RemediationOption struct {
 	// +optional
 	RBAC RBACResult `json:"rbac,omitzero"`
 	// components contains optional adapter-defined structured data whose
-	// shape is determined by spec.outputSchema on the Proposal. The
-	// operator passes this through to the AnalysisResult CR; the console
-	// renders it using adapter-specific UI components.
+	// shape is determined by spec.analysisOutput.schema on the Proposal.
+	// The operator passes this through to the AnalysisResult CR; the
+	// console renders it using adapter-specific UI components.
 	// +optional
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:pruning:PreserveUnknownFields
